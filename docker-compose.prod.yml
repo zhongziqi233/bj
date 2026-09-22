@@ -1,0 +1,54 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: bullet-journal-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bullet_journal}
+      MYSQL_USER: ${MYSQL_USER:-bullet}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-bullet_pass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_pass}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_pass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    container_name: bullet-journal-backend
+    restart: always
+    environment:
+      FLASK_ENV: production
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required in .env}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required in .env}"
+      JWT_EXPIRES_HOURS: ${JWT_EXPIRES_HOURS:-24}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-bullet}:${MYSQL_PASSWORD:-bullet_pass}@db:3306/${MYSQL_DATABASE:-bullet_journal}?charset=utf8mb4
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-Admin123456}
+      AUTO_CREATE_TABLES: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    container_name: bullet-journal-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  mysql_data:
