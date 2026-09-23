@@ -1,26 +1,4 @@
 services:
-  db:
-    image: mysql:8.0
-    container_name: bullet-journal-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-bullet_journal}
-      MYSQL_USER: ${MYSQL_USER:-bullet}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-bullet_pass}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_pass}
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_pass}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   backend:
     build:
       context: ./backend
@@ -32,18 +10,26 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret}
       JWT_EXPIRES_HOURS: ${JWT_EXPIRES_HOURS:-24}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost}
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-bullet}:${MYSQL_PASSWORD:-bullet_pass}@db:3306/${MYSQL_DATABASE:-bullet_journal}?charset=utf8mb4
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/bullet_journal.db}
       DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@example.com}
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-Admin123456}
       AUTO_CREATE_TABLES: "true"
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
-      - "5000:5000"
+      - "${BACKEND_PORT:-5000}:5000"
     volumes:
       - ./backend:/app
+      - sqlite_data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     command:
       - flask
       - --app
@@ -62,14 +48,15 @@ services:
     environment:
       VITE_PROXY_TARGET: http://backend:5000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
-      - "5173:5173"
+      - "${DEV_FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 volumes:
-  mysql_data:
+  sqlite_data:
   frontend_node_modules:

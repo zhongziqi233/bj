@@ -1,6 +1,6 @@
 from flask import Flask, jsonify
 
-from .config import Config
+from .config import Config, ensure_database_directory
 from .extensions import cors, db, jwt, migrate
 
 
@@ -8,6 +8,7 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    ensure_database_directory(app.config["SQLALCHEMY_DATABASE_URI"])
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)

@@ -6,7 +6,7 @@
 
 - 前端：Vue 3 + Vite + Element Plus + Pinia + Vue Router
 - 后端：Flask + Flask-SQLAlchemy + Flask-JWT-Extended
-- 数据库：MySQL 8
+- 数据库：SQLite（默认文件：`backend/data/bullet_journal.db`）
 - 部署：Docker Compose 开发环境 + Docker Compose 生产环境 + Nginx + Gunicorn
 
 ## 功能
@@ -19,7 +19,7 @@
 - 快速记录：使用 `•` 任务、`○` 事件、`—` 笔记三种类型
 - 自定义子弹：用预设矢量叠加、上传 SVG 或粘贴路径，为任务、事件和笔记设计专属符号
 - 状态子弹：任务待办、完成、推迟到明天、迁移到指定日期、安排到未来日志分别使用独立子弹
-- 任务状态：待办、已完成、已迁移、已安排、已取消
+- 任务状态：待办、已完成、已推迟、已迁移、已安排、已取消
 - 重点标记：给重要记录加星标
 - 月度日志：月历查看日期记录，单独维护本月任务列表
 - 未来日志：按年份查看 12 个月，把事项安排到目标月份
@@ -47,9 +47,12 @@ BulletJournal/
 │   │   ├── models/          用户、集合、记录模型
 │   │   ├── routes/          认证、用户、记录、集合接口
 │   │   └── utils/           日期、校验、鉴权工具
+│   ├── data/                SQLite 数据库文件
+│   ├── scripts/             MySQL -> SQLite 数据迁移脚本
 │   ├── tests/               后端接口测试
 │   ├── Dockerfile
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── requirements-migrate.txt
 ├── frontend/                Vue 3 前端
 │   ├── src/
 │   │   ├── api/             API 封装
@@ -77,7 +80,8 @@ docker compose up --build
 
 - 前端：http://localhost:5173
 - 后端健康检查：http://localhost:5000/api/health
-- MySQL：localhost:3306
+
+SQLite 数据保存在 Docker volume `sqlite_data` 中。
 
 默认管理员账号来自 `.env`：
 
@@ -104,15 +108,13 @@ docker compose -f docker-compose.prod.yml up -d --build
 - 前端：http://服务器地址
 - API：http://服务器地址/api
 
-生产环境中的 Nginx 会托管前端构建产物，并把 `/api` 请求转发到 Flask 后端。MySQL 数据保存在 Docker volume `mysql_data` 中。
+生产环境中的 Nginx 会托管前端构建产物，并把 `/api` 请求转发到 Flask 后端。SQLite 数据保存在 Docker volume `sqlite_data` 中。
 
 生产环境建议至少修改：
 
 ```text
 SECRET_KEY
 JWT_SECRET_KEY
-MYSQL_PASSWORD
-MYSQL_ROOT_PASSWORD
 DEFAULT_ADMIN_PASSWORD
 CORS_ORIGINS
 ```
@@ -121,19 +123,18 @@ CORS_ORIGINS
 
 ### 后端
 
-先准备一个 MySQL 8 数据库，并创建数据库和用户。然后执行：
+不需要单独安装数据库。后端默认会在 `backend/data/bullet_journal.db` 创建 SQLite 数据库：
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-set DATABASE_URL=mysql+pymysql://bullet:bullet_pass@localhost:3306/bullet_journal?charset=utf8mb4
 flask --app wsgi:app init-db
 flask --app wsgi:app run --debug --port 5000
 ```
 
-也可以复制根目录的 `.env.example` 为 `.env`，再自行设置环境变量。项目默认会读取 `DATABASE_URL`、`SECRET_KEY`、`JWT_SECRET_KEY`、`DEFAULT_ADMIN_USERNAME`、`DEFAULT_ADMIN_EMAIL` 和 `DEFAULT_ADMIN_PASSWORD`。
+也可以复制根目录的 `.env.example` 为 `.env`，再自行设置环境变量。默认会读取 `SQLITE_PATH` 或 `DATABASE_URL`，不配置时使用 `backend/data/bullet_journal.db`。
 
 ### 前端
 
@@ -147,7 +148,7 @@ npm run dev
 
 ## 测试
 
-后端测试默认使用 SQLite 临时数据库，不会连接本机的 MySQL：
+后端测试默认使用 SQLite 临时数据库：
 
 ```bash
 cd backend
@@ -155,11 +156,12 @@ cd backend
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-如果要用真实 MySQL 做集成测试，可以设置 `TEST_DATABASE_URL`。测试会在该数据库中创建和删除测试表，请务必使用专门的测试库：
+如果需要从旧的 MySQL 数据迁移，先安装迁移依赖：
 
 ```powershell
-$env:TEST_DATABASE_URL="mysql+pymysql://root:你的密码@127.0.0.1:3306/bullet_journal_test?charset=utf8mb4"
-.venv\Scripts\python.exe -m pytest -q
+cd backend
+.venv\Scripts\python.exe -m pip install -r requirements-migrate.txt
+.venv\Scripts\python.exe scripts\migrate_mysql_to_sqlite.py --source "mysql+pymysql://root:你的密码@127.0.0.1:3306/bullet_journal?charset=utf8mb4"
 ```
 
 前端构建检查：
